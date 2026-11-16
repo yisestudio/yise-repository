@@ -5,7 +5,8 @@
 - Loose tube (FDM holes print small) + a 15-degree funnel only at the
   bottom so the lowest ball always rolls back onto the seat.
 - Flat bottom, side hose barb lying on the bed: prints upright, no supports.
-- Four wide flat legs, printed lying flat, plug into pockets in the base ring.
+- One X-shaped base printed flat; the body's bottom plug drops into its hub,
+  the hose barb passes through a slot in the hub.
 
 Usage: python3 relief.py <out_dir>   (units: mm, z up)
 """
@@ -30,8 +31,8 @@ PLUG_LEN = 3.0
 FIT = 0.25                  # FDM press fit
 
 # base ring + side barb
-RING_R = 18.0
-RING_H = 12.0
+RING_R = 14.0              # bottom plug that goes into the X base hub
+RING_H = 14.0
 BARB_Z = 4.5                # barb axis height
 BARB_LEN = 19.0
 RIDGE_OFFS = (10.0, 14.5)   # hose ridges, kept clear of the root collar
@@ -39,13 +40,16 @@ ROOT_R = 6.0                # collar radius at the ring face
 ROOT_LEN = 8.0              # collar tapers to the barb shaft over this length
 CH_D = 3.0                  # air channel / barb bore
 
-# legs
-LEG_ANGLES = (45, 135, 225, 315)
+# X base (one piece, body plugs into its hub)
 SLOT_ANGLES = (0, 90, 180, 270)
-POCKET_W, POCKET_H, POCKET_D = 10.4, 5.4, 10.0
-TAB_W, TAB_H, TAB_D = 10.0, 5.0, 10.0
-LEG_W, LEG_H, LEG_LEN = 16.0, 5.0, 60.0
-PAD_R = 12.0
+ARM_ANGLES = (45, 135, 225, 315)
+HUB_FIT = 0.25
+HUB_WALL = 4.0
+HUB_H = 14.0
+ARM_LEN = 80.0              # centre to pad centre
+ARM_W, ARM_H = 18.0, 6.0
+PAD_R = 13.0
+BARB_SLOT_W = 14.0          # opening in the hub for the barb collar
 
 R = BALL_D / 2
 c0 = math.sqrt(R * R - (SEAT_D / 2) ** 2)
@@ -90,10 +94,6 @@ body = body - cyl(TOP_Z - SEAT_Z, TUBE_D / 2, z=SEAT_Z + funnel_h)
 for a in SLOT_ANGLES:
     s = box(BODY_R + 2, 4.0, 20.0, x0=0, z0=SEAT_Z + 1.0)
     body = body - s.rotate((0, 0, a))   # between the legs (z above the barb)
-# leg pockets, open at the bottom
-for a in LEG_ANGLES:
-    p = box(POCKET_D + 1, POCKET_W, POCKET_H + 0.5, x0=RING_R - POCKET_D, z0=-0.5)
-    body = body - p.rotate((0, 0, a))
 
 # ---- cap (prints flat, plug up) ----
 plug_r = (TUBE_D - FIT) / 2
@@ -101,10 +101,15 @@ cap = cyl(2.5, BODY_R) + cyl(PLUG_LEN, plug_r, z=2.5)
 cap = cap - cyl(PLUG_LEN + 1, plug_r - 1.6, z=2.5)
 cap = cap - cyl(10, 3.0, z=-1)
 
-# ---- leg (prints flat, x 4) ----  tab at x<0 goes into the pocket
-leg = box(TAB_D, TAB_W, TAB_H, x0=-TAB_D)
-leg = leg + box(LEG_LEN - PAD_R, LEG_W, LEG_H)
-leg = leg + m3d.Manifold.cylinder(LEG_H, PAD_R, PAD_R, SEG).translate((LEG_LEN - PAD_R, 0, 0))
+# ---- X base (prints flat) ----
+hub_in = RING_R + HUB_FIT
+xb = cyl(HUB_H, hub_in + HUB_WALL)
+for a in ARM_ANGLES:
+    arm = box(ARM_LEN, ARM_W, ARM_H, x0=0.0)
+    arm = arm + m3d.Manifold.cylinder(ARM_H, PAD_R, PAD_R, SEG).translate((ARM_LEN, 0, 0))
+    xb = xb + arm.rotate((0, 0, a))
+xb = xb - cyl(HUB_H + 2, hub_in, z=-1)                              # through socket
+xb = xb - box(hub_in + HUB_WALL + 2, BARB_SLOT_W, HUB_H + 2, x0=0.0, z0=-1)  # barb slot at +x
 
 def save(man, name):
     mesh = man.to_mesh()
@@ -114,13 +119,13 @@ def save(man, name):
 
 b = save(body, "relief_base.stl")
 c = save(cap, "relief_cap.stl")
-l = save(leg, "relief_leg.stl")
+x = save(xb, "relief_xbase.stl")
 
 area = math.pi * (SEAT_D / 2) ** 2
 g1 = 7.85 * math.pi / 6 * (BALL_D / 10) ** 3
 print(f"body watertight={b.is_watertight} height {TOP_Z:.1f} tube ID {TUBE_D:.1f} OD {2*BODY_R:.1f} base ring {2*RING_R:.0f}")
-print(f"cap watertight={c.is_watertight} leg watertight={l.is_watertight} leg {LEG_LEN:.0f}x{LEG_W:.0f}x{LEG_H:.0f}")
-print(f"footprint radius {RING_R + LEG_LEN:.0f} mm, funnel rise {funnel_h:.2f} mm")
+print(f"cap watertight={c.is_watertight} xbase watertight={x.is_watertight} xbase span {x.bounds[1][0]-x.bounds[0][0]:.0f} mm")
+print(f"foot reach radius {ARM_LEN + PAD_R:.0f} mm, funnel rise {funnel_h:.2f} mm")
 print(f"edge seated: R*sin(funnel)={R*math.sin(math.radians(FUNNEL_DEG)):.2f} < {SEAT_D/2}")
 for n in range(1, MAX_BALLS + 1):
     print(f"  {n} ball(s): {n*g1:.1f} g -> {n*g1*9.81/area:.1f} kPa")
