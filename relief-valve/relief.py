@@ -3,7 +3,7 @@
 1, 2 or 3 steel balls (16 mm) stack in a close-fit tube on a 5.9 mm
 sharp seat edge. More balls = more weight = higher opening pressure:
 1 ball ~6 kPa, 2 balls ~12 kPa, 3 balls ~18 kPa.
-Three removable legs plug into sockets so the valve stands on the floor
+Four removable legs plug into sockets so the valve stands on the floor
 with room under it for the hose.
 
 Usage: python3 relief.py <out_dir>   (units: mm, z up)
@@ -36,8 +36,8 @@ CEIL_Z = stack_top + LIFT
 TOP_Z = CEIL_Z + PLUG_LEN
 
 # legs
-LEG_ANGLES = (90, 210, 330)
-SLOT_ANGLES = (30, 150, 270)
+LEG_ANGLES = (45, 135, 225, 315)
+SLOT_ANGLES = (0, 90, 180, 270)
 SOCKET_R = 18.0             # socket centre radius
 PIN = 5.0                   # leg pin cross-section
 SOCKET = PIN + 0.3          # clearance for SLA
