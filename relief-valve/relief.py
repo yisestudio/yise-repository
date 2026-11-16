@@ -4,7 +4,7 @@
   1 ball ~4 kPa, 2 ~8, 3 ~12, 4 ~16, 5 ~20.
 - Loose tube (FDM holes print small) + a 15-degree funnel only at the
   bottom so the lowest ball always rolls back onto the seat.
-- Flat bottom, side hose barb lying on the bed: prints upright, no supports.
+- Flat bottom, side hose barb: add slicer supports under the barb only.
 - One X-shaped base printed flat; the body's bottom plug drops into its hub,
   the hose barb passes through a slot in the hub.
 
@@ -76,10 +76,8 @@ bx = RING_R - 1.0
 barb = xcyl(BARB_LEN, 2.3, 2.3, bx, BARB_Z)
 for off in RIDGE_OFFS:
     barb = barb + xcyl(3.5, 2.75, 2.3, bx + off, BARB_Z)   # ridges: wide toward body
-barb = barb + box(BARB_LEN - 1, 4.0, BARB_Z, x0=bx, z0=0.0)   # support rib under barb
-# root reinforcement: tapered collar + wide gusset block where the barb meets the ring
+# root reinforcement: tapered collar where the barb meets the plug (no support under the barb; add it in the slicer)
 barb = barb + xcyl(ROOT_LEN, ROOT_R, 2.3, bx - 1.0, BARB_Z)
-barb = barb + box(ROOT_LEN * 0.6, 2 * ROOT_R, BARB_Z, x0=bx - 1.0, z0=0.0)
 barb = barb ^ box(100, 100, 50, x0=-10, z0=0.0)              # trim anything below the bed
 body = body + barb
 # air path: barb bore -> centre -> up to seat
