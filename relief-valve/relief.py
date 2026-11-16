@@ -48,6 +48,8 @@ RIB_W, RIB_H = GROOVE_W - 0.5, GROOVE_DEPTH - 0.2
 CART_SLOT_W = 3.5
 CART_TOP_Z = TOP_Z - PLUG_LEN - 2.5     # 2.5 mm below the cap plug (FDM taper may sit a bit high)
 SEATS = (8.0, 5.5)
+BRIM_T = 0.4                # brim thickness (2 layers at 0.2 mm)
+BRIM_R = 16.0               # brim outer radius (~8 mm wide around the 15.7 mm tube)
 
 # ---------- X base ----------
 ARM_ANGLES = (45, 135, 225, 315)
@@ -127,6 +129,10 @@ for sd in SEATS:
     # FDM: print upside down -- open top end on the bed, spigot pointing up
     tm.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [1, 0, 0]))
     tm.apply_translation((0, 0, -tm.bounds[0][2]))
+    # thin brim ring fused to the bed end (cut it off after printing)
+    m = m3d.Manifold(m3d.Mesh(vert_properties=tm.vertices.astype("float32"), tri_verts=tm.faces.astype("uint32")))
+    brim = cyl(BRIM_T, BRIM_R) - cyl(BRIM_T + 1, CART_OD / 2 - 0.3, z=-0.5)
+    tm = to_tm(m + brim)
     name = f"relief_cart_{str(sd).replace('.', 'p')}mm.stl"
     parts[name] = tm
     area = math.pi * (sd / 2) ** 2
