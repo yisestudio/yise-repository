@@ -43,7 +43,7 @@ CART_ID = BALL_D + 1.0
 CART_FLOOR = 3.0
 CART_GAP = 0.8              # underside hovers above the body floor; the taper does the sealing
 SPIG_TOP_D, SPIG_BOT_D, SPIG_LEN = 12.6, 11.8, 8.0
-FUNNEL_DEG = 15.0
+FUNNEL_DEG = {8.0: 35.0, 5.5: 22.0}   # as steep as possible for upside-down FDM, still < ball tangent at the edge
 RIB_W, RIB_H = GROOVE_W - 0.5, GROOVE_DEPTH - 0.2
 CART_SLOT_W = 3.5
 CART_TOP_Z = TOP_Z - PLUG_LEN - 1.0     # stays below the cap plug
@@ -98,7 +98,7 @@ cap = cap - cyl(10, 3.0, z=-1)
 def cartridge(seat_d):
     z0 = FLOOR_Z + CART_GAP
     seat_z = z0 + CART_FLOOR
-    funnel_h = (CART_ID / 2 - seat_d / 2) * math.tan(math.radians(FUNNEL_DEG))
+    funnel_h = (CART_ID / 2 - seat_d / 2) * math.tan(math.radians(FUNNEL_DEG[seat_d]))
     c = cyl(CART_TOP_Z - z0, CART_OD / 2, z=z0)
     c = c + cyl(SPIG_LEN, SPIG_BOT_D / 2, SPIG_TOP_D / 2, z0 - SPIG_LEN)
     rib = box(CART_OD / 2 + RIB_H, RIB_W, CART_TOP_Z - z0, x0=0, z0=z0)
@@ -124,13 +124,15 @@ info = []
 for sd in SEATS:
     cm, seat_z = cartridge(sd)
     tm = to_tm(cm)
-    tm.apply_translation((0, 0, -tm.bounds[0][2]))        # print upright, spigot on the bed
+    # FDM: print upside down -- open top end on the bed, spigot pointing up
+    tm.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [1, 0, 0]))
+    tm.apply_translation((0, 0, -tm.bounds[0][2]))
     name = f"relief_cart_{str(sd).replace('.', 'p')}mm.stl"
     parts[name] = tm
     area = math.pi * (sd / 2) ** 2
     c0 = seat_z + math.sqrt((BALL_D / 2) ** 2 - (sd / 2) ** 2)
     nmax = int((CART_TOP_Z - 3.0 - (c0 + BALL_D / 2)) // BALL_D) + 1
-    seated = BALL_D / 2 * math.sin(math.radians(FUNNEL_DEG)) < sd / 2
+    seated = BALL_D / 2 * math.sin(math.radians(FUNNEL_DEG[sd])) < sd / 2
     info.append((name, tm, seated, nmax, area))
 
 for name, tm in parts.items():
