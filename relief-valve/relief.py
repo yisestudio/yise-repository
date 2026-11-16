@@ -46,7 +46,7 @@ SPIG_TOP_D, SPIG_BOT_D, SPIG_LEN = 12.6, 11.8, 8.0
 FUNNEL_DEG = {8.0: 35.0, 5.5: 22.0}   # as steep as possible for upside-down FDM, still < ball tangent at the edge
 RIB_W, RIB_H = GROOVE_W - 0.5, GROOVE_DEPTH - 0.2
 CART_SLOT_W = 3.5
-CART_TOP_Z = TOP_Z - PLUG_LEN - 1.0     # stays below the cap plug
+CART_TOP_Z = TOP_Z - PLUG_LEN - 2.5     # 2.5 mm below the cap plug (FDM taper may sit a bit high)
 SEATS = (8.0, 5.5)
 
 # ---------- X base ----------
@@ -131,7 +131,7 @@ for sd in SEATS:
     parts[name] = tm
     area = math.pi * (sd / 2) ** 2
     c0 = seat_z + math.sqrt((BALL_D / 2) ** 2 - (sd / 2) ** 2)
-    nmax = int((CART_TOP_Z - 3.0 - (c0 + BALL_D / 2)) // BALL_D) + 1
+    nmax = int((TOP_Z - 3.0 - (c0 + BALL_D / 2)) // BALL_D) + 1   # balls may rise past the cartridge top up to the cap disc
     seated = BALL_D / 2 * math.sin(math.radians(FUNNEL_DEG[sd])) < sd / 2
     info.append((name, tm, seated, nmax, area))
 
