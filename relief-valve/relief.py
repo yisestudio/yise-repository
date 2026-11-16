@@ -1,10 +1,11 @@
-"""Stacked-ball dead-weight relief valve with plug-in legs.
+"""Stacked-ball dead-weight relief valve, FDM-friendly.
 
-1, 2 or 3 steel balls (16 mm) stack in a close-fit tube on a 5.9 mm
-sharp seat edge. More balls = more weight = higher opening pressure:
-1 ball ~6 kPa, 2 balls ~12 kPa, 3 balls ~18 kPa.
-Four removable legs plug into sockets so the valve stands on the floor
-with room under it for the hose.
+- 1-5 steel balls (15 mm) stack in a loose tube on a 6.5 mm seat edge:
+  1 ball ~4 kPa, 2 ~8, 3 ~12, 4 ~16, 5 ~20.
+- Loose tube (FDM holes print small) + a 15-degree funnel only at the
+  bottom so the lowest ball always rolls back onto the seat.
+- Flat bottom, side hose barb lying on the bed: prints upright, no supports.
+- Four wide flat legs, printed lying flat, plug into pockets in the base ring.
 
 Usage: python3 relief.py <out_dir>   (units: mm, z up)
 """
@@ -15,76 +16,88 @@ import trimesh
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 SEG = 128
 
-BALL_D = 16.0
-MAX_BALLS = 3
-TUBE_D = BALL_D + 0.6       # close fit keeps the stack straight
+BALL_D = 15.0
+MAX_BALLS = 5
+TUBE_D = BALL_D + 1.2       # FDM: holes shrink ~0.2-0.4 mm, still free-running
 WALL = 2.4
 BODY_R = TUBE_D / 2 + WALL
-SEAT_D = 5.9                # sharp seat edge -> effective area
-BORE_D = 5.3                # hole below the 45-degree chamfer
-BARB_BORE_D = 3.0
-BARB_TOP = 13.0
-SEAT_Z = 18.0
+SEAT_D = 6.5                # sharp edge; drill with a 6.5 mm bit after printing
+BORE_D = 6.0
+FUNNEL_DEG = 15.0           # R*sin(15) = 1.9 < 3.25 -> ball sits on the edge, not the funnel
+SEAT_Z = 14.0
 LIFT = 5.0
 PLUG_LEN = 3.0
-FIT = 0.10
+FIT = 0.25                  # FDM press fit
 
-R = BALL_D / 2
-c0 = math.sqrt(R * R - (SEAT_D / 2) ** 2)              # bottom ball centre above seat
-stack_top = SEAT_Z + c0 + R + (MAX_BALLS - 1) * BALL_D
-CEIL_Z = stack_top + LIFT
-TOP_Z = CEIL_Z + PLUG_LEN
+# base ring + side barb
+RING_R = 18.0
+RING_H = 12.0
+BARB_Z = 4.5                # barb axis height
+BARB_LEN = 14.0
+CH_D = 3.0                  # air channel / barb bore
 
 # legs
 LEG_ANGLES = (45, 135, 225, 315)
 SLOT_ANGLES = (0, 90, 180, 270)
-SOCKET_R = 18.0             # socket centre radius
-PIN = 5.0                   # leg pin cross-section
-SOCKET = PIN + 0.3          # clearance for SLA
-SOCKET_DEPTH = 8.0
-BOSS_H = 11.0
-BOSS_W = 10.0
-LEG_W = 7.0                 # leg body is thicker than the pin -> shoulder stops it
-LEG_BELOW = 45.0            # leg length under the body (barb is 13 mm, leaves ~32 mm for the hose bend)
-FOOT = (20.0, 12.0, 4.0)    # foot pad, extends outward
+POCKET_W, POCKET_H, POCKET_D = 10.4, 5.4, 10.0
+TAB_W, TAB_H, TAB_D = 10.0, 5.0, 10.0
+LEG_W, LEG_H, LEG_LEN = 16.0, 5.0, 60.0
+PAD_R = 12.0
+
+R = BALL_D / 2
+c0 = math.sqrt(R * R - (SEAT_D / 2) ** 2)
+stack_top = SEAT_Z + c0 + R + (MAX_BALLS - 1) * BALL_D
+CEIL_Z = stack_top + LIFT
+TOP_Z = CEIL_Z + PLUG_LEN
 
 def cyl(h, r1, r2=None, z=0.0):
     r2 = r1 if r2 is None else r2
     return m3d.Manifold.cylinder(h, r1, r2, SEG).translate((0, 0, z))
 
-def box(x, y, z, cx=0.0, cy=0.0, z0=0.0):
-    return m3d.Manifold.cube((x, y, z)).translate((cx - x / 2, cy - y / 2, z0))
+def box(x, y, z, x0=0.0, cy=0.0, z0=0.0):
+    return m3d.Manifold.cube((x, y, z)).translate((x0, cy - y / 2, z0))
+
+def xcyl(length, r1, r2, x0, z):     # cylinder along +x
+    return m3d.Manifold.cylinder(length, r1, r2, SEG).rotate((0, 90, 0)).translate((x0, 0, z))
+
+funnel_h = (TUBE_D / 2 - SEAT_D / 2) * math.tan(math.radians(FUNNEL_DEG))
 
 # ---- body ----
-base = cyl(BARB_TOP, 2.3)
-for z in (2.0, 6.5):
-    base = base + cyl(3.5, 2.3, 2.75, z)
-base = base + cyl(TOP_Z - BARB_TOP, BODY_R, z=BARB_TOP)
-for a in LEG_ANGLES:                                       # leg bosses
-    boss = box(SOCKET_R + BOSS_W / 2, BOSS_W, BOSS_H, cx=(SOCKET_R + BOSS_W / 2) / 2, z0=BARB_TOP)
-    base = base + boss.rotate((0, 0, a))
-base = base - cyl(TOP_Z - SEAT_Z + 1, TUBE_D / 2, z=SEAT_Z)            # ball tube
-base = base - cyl(BARB_TOP + 1, BARB_BORE_D / 2, z=-0.5)               # barb bore
-base = base - cyl(SEAT_Z - BARB_TOP + 0.2, BORE_D / 2, z=BARB_TOP - 0.1)
+body = cyl(RING_H, RING_R) + cyl(TOP_Z, BODY_R)
+# side barb along +x, resting on the bed via a rib
+bx = RING_R - 1.0
+barb = xcyl(BARB_LEN, 2.3, 2.3, bx, BARB_Z)
+for off in (3.0, 7.5):
+    barb = barb + xcyl(3.5, 2.75, 2.3, bx + off, BARB_Z)   # ridges: wide toward body
+barb = barb + box(BARB_LEN - 1, 3.0, BARB_Z, x0=bx, z0=0.0)   # support rib under barb
+body = body + barb
+# air path: barb bore -> centre -> up to seat
+body = body - xcyl(bx + BARB_LEN + 1, CH_D / 2, CH_D / 2, 0.0, BARB_Z)
+body = body - cyl(SEAT_Z - BARB_Z + 0.1, BORE_D / 2, z=BARB_Z - CH_D / 2)
 cham_h = (SEAT_D - BORE_D) / 2
-base = base - cyl(cham_h + 0.001, BORE_D / 2, SEAT_D / 2, SEAT_Z - cham_h)  # sharp 5.9 edge
-for a in SLOT_ANGLES:                                      # vent slots at the bottom ball
-    slot = box(BODY_R + 2, 4.0, 20.0, cx=(BODY_R + 2) / 2, z0=SEAT_Z + 0.5)
-    base = base - slot.rotate((0, 0, a))
-for a in LEG_ANGLES:                                       # leg sockets (open downward)
-    sock = box(SOCKET, SOCKET, SOCKET_DEPTH + 0.5, cx=SOCKET_R, z0=BARB_TOP - 0.5)
-    base = base - sock.rotate((0, 0, a))
+body = body - cyl(cham_h + 0.001, BORE_D / 2, SEAT_D / 2, SEAT_Z - cham_h)
+# funnel + tube
+body = body - cyl(funnel_h + 0.001, SEAT_D / 2, TUBE_D / 2, SEAT_Z)
+body = body - cyl(TOP_Z - SEAT_Z, TUBE_D / 2, z=SEAT_Z + funnel_h)
+# vent slots by the bottom ball
+for a in SLOT_ANGLES:
+    s = box(BODY_R + 2, 4.0, 20.0, x0=0, z0=SEAT_Z + 1.0)
+    body = body - s.rotate((0, 0, a))   # between the legs (z above the barb)
+# leg pockets, open at the bottom
+for a in LEG_ANGLES:
+    p = box(POCKET_D + 1, POCKET_W, POCKET_H + 0.5, x0=RING_R - POCKET_D, z0=-0.5)
+    body = body - p.rotate((0, 0, a))
 
-# ---- cap ----
+# ---- cap (prints flat, plug up) ----
 plug_r = (TUBE_D - FIT) / 2
 cap = cyl(2.5, BODY_R) + cyl(PLUG_LEN, plug_r, z=2.5)
-cap = cap - cyl(PLUG_LEN + 1, plug_r - 1.5, z=2.5)
-cap = cap - cyl(10, 2.5, z=-1)
+cap = cap - cyl(PLUG_LEN + 1, plug_r - 1.6, z=2.5)
+cap = cap - cyl(10, 3.0, z=-1)
 
-# ---- leg (print 3) ----  pin up, foot pad points +x (outward)
-leg = box(PIN, PIN, SOCKET_DEPTH, z0=LEG_BELOW)                       # pin into socket
-leg = leg + box(LEG_W, LEG_W, LEG_BELOW)                               # leg body
-leg = leg + box(FOOT[0], FOOT[1], FOOT[2], cx=FOOT[0] / 2 - LEG_W / 2)  # foot pad
+# ---- leg (prints flat, x 4) ----  tab at x<0 goes into the pocket
+leg = box(TAB_D, TAB_W, TAB_H, x0=-TAB_D)
+leg = leg + box(LEG_LEN - PAD_R, LEG_W, LEG_H)
+leg = leg + m3d.Manifold.cylinder(LEG_H, PAD_R, PAD_R, SEG).translate((LEG_LEN - PAD_R, 0, 0))
 
 def save(man, name):
     mesh = man.to_mesh()
@@ -92,17 +105,15 @@ def save(man, name):
     tm.export(f"{OUT}/{name}")
     return tm
 
-b = save(base, "relief_base.stl")
+b = save(body, "relief_base.stl")
 c = save(cap, "relief_cap.stl")
 l = save(leg, "relief_leg.stl")
 
 area = math.pi * (SEAT_D / 2) ** 2
 g1 = 7.85 * math.pi / 6 * (BALL_D / 10) ** 3
-print(f"body watertight={b.is_watertight}  OD {2*BODY_R:.1f}  height {TOP_Z:.1f}  tube ID {TUBE_D:.1f}")
-print(f"cap watertight={c.is_watertight}  leg watertight={l.is_watertight}")
-print(f"standing height ~{TOP_Z + LEG_BELOW + 0 - BARB_TOP + BARB_TOP:.0f} mm above floor (legs {LEG_BELOW} below body bottom)")
-print(f"foot reach radius ~{SOCKET_R + FOOT[0] - LEG_W/2:.0f} mm")
-print(f"seat area {area:.2f} mm2, one ball {g1:.1f} g")
+print(f"body watertight={b.is_watertight} height {TOP_Z:.1f} tube ID {TUBE_D:.1f} OD {2*BODY_R:.1f} base ring {2*RING_R:.0f}")
+print(f"cap watertight={c.is_watertight} leg watertight={l.is_watertight} leg {LEG_LEN:.0f}x{LEG_W:.0f}x{LEG_H:.0f}")
+print(f"footprint radius {RING_R + LEG_LEN:.0f} mm, funnel rise {funnel_h:.2f} mm")
+print(f"edge seated: R*sin(funnel)={R*math.sin(math.radians(FUNNEL_DEG)):.2f} < {SEAT_D/2}")
 for n in range(1, MAX_BALLS + 1):
     print(f"  {n} ball(s): {n*g1:.1f} g -> {n*g1*9.81/area:.1f} kPa")
-print(f"lift with {MAX_BALLS} balls: {CEIL_Z - stack_top:.1f} mm")
