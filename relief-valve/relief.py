@@ -126,12 +126,11 @@ info = []
 for sd in SEATS:
     cm, seat_z = cartridge(sd)
     tm = to_tm(cm)
-    # FDM: print upside down -- open top end on the bed, spigot pointing up
-    tm.apply_transform(trimesh.transformations.rotation_matrix(math.pi, [1, 0, 0]))
+    # print upright: spigot tip on the bed
     tm.apply_translation((0, 0, -tm.bounds[0][2]))
     # thin brim ring fused to the bed end (cut it off after printing)
     m = m3d.Manifold(m3d.Mesh(vert_properties=tm.vertices.astype("float32"), tri_verts=tm.faces.astype("uint32")))
-    brim = cyl(BRIM_T, BRIM_R) - cyl(BRIM_T + 1, CART_OD / 2 - 0.3, z=-0.5)
+    brim = cyl(BRIM_T, BRIM_R) - cyl(BRIM_T + 1, SPIG_BOT_D / 2 - 0.3, z=-0.5)   # ring around the spigot tip
     tm = to_tm(m + brim)
     name = f"relief_cart_{str(sd).replace('.', 'p')}mm.stl"
     parts[name] = tm
