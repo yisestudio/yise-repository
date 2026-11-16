@@ -33,7 +33,10 @@ FIT = 0.25                  # FDM press fit
 RING_R = 18.0
 RING_H = 12.0
 BARB_Z = 4.5                # barb axis height
-BARB_LEN = 14.0
+BARB_LEN = 19.0
+RIDGE_OFFS = (10.0, 14.5)   # hose ridges, kept clear of the root collar
+ROOT_R = 6.0                # collar radius at the ring face
+ROOT_LEN = 8.0              # collar tapers to the barb shaft over this length
 CH_D = 3.0                  # air channel / barb bore
 
 # legs
@@ -67,9 +70,13 @@ body = cyl(RING_H, RING_R) + cyl(TOP_Z, BODY_R)
 # side barb along +x, resting on the bed via a rib
 bx = RING_R - 1.0
 barb = xcyl(BARB_LEN, 2.3, 2.3, bx, BARB_Z)
-for off in (3.0, 7.5):
+for off in RIDGE_OFFS:
     barb = barb + xcyl(3.5, 2.75, 2.3, bx + off, BARB_Z)   # ridges: wide toward body
-barb = barb + box(BARB_LEN - 1, 3.0, BARB_Z, x0=bx, z0=0.0)   # support rib under barb
+barb = barb + box(BARB_LEN - 1, 4.0, BARB_Z, x0=bx, z0=0.0)   # support rib under barb
+# root reinforcement: tapered collar + wide gusset block where the barb meets the ring
+barb = barb + xcyl(ROOT_LEN, ROOT_R, 2.3, bx - 1.0, BARB_Z)
+barb = barb + box(ROOT_LEN * 0.6, 2 * ROOT_R, BARB_Z, x0=bx - 1.0, z0=0.0)
+barb = barb ^ box(100, 100, 50, x0=-10, z0=0.0)              # trim anything below the bed
 body = body + barb
 # air path: barb bore -> centre -> up to seat
 body = body - xcyl(bx + BARB_LEN + 1, CH_D / 2, CH_D / 2, 0.0, BARB_Z)
