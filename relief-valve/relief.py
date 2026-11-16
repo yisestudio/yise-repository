@@ -1,61 +1,59 @@
-"""Stacked-ball dead-weight relief valve, FDM-friendly.
+"""Dead-weight ball relief valve with swappable 12 mm ball cartridges (FDM).
 
-- 1-5 steel balls (15 mm) stack in a loose tube on a 6.5 mm seat edge:
-  1 ball ~4 kPa, 2 ~8, 3 ~12, 4 ~16, 5 ~20.
-- Loose tube (FDM holes print small) + a 15-degree funnel only at the
-  bottom so the lowest ball always rolls back onto the seat.
-- Flat bottom, side hose barb: add slicer supports under the barb only.
-- One X-shaped base printed flat; the body's bottom plug drops into its hub,
-  the hose barb passes through a slot in the hub.
+Body (fixed): base plug + side hose barb + 16.2 mm tube + tapered socket.
+Cartridge (swap): sleeve for 12 mm balls with its own seat hole and a
+15-degree funnel. A tapered spigot under the cartridge wedges into the
+body socket, so it seals without a washer. A rib on the cartridge rides
+in a groove in the tube so its vent slots line up with the body's.
+
+  cartridge 8.0 mm hole : ~1.4 kPa per 12 mm steel ball (big modules)
+  cartridge 5.5 mm hole : ~2.9 kPa per ball           (small modules)
 
 Usage: python3 relief.py <out_dir>   (units: mm, z up)
 """
-import math, sys
+import math, os, sys
 import manifold3d as m3d
 import trimesh
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 SEG = 128
 
-BALL_D = 15.0
-MAX_BALLS = 5
-TUBE_D = BALL_D + 1.2       # FDM: holes shrink ~0.2-0.4 mm, still free-running
+# ---------- body ----------
+TUBE_D = 16.2
 WALL = 2.4
 BODY_R = TUBE_D / 2 + WALL
-SEAT_D = 5.5                # printed as-is (no drilling); smaller seat -> higher pressure per ball
-BORE_D = 5.5                # straight bore, sharp edge at the funnel
-FUNNEL_DEG = 15.0           # R*sin(15) = 1.9 < 3.25 -> ball sits on the edge, not the funnel
-SEAT_Z = 14.0
-LIFT = 5.0
+FLOOR_Z = 14.0              # top of body floor
+TOP_Z = 96.5
 PLUG_LEN = 3.0
-FIT = 0.25                  # FDM press fit
-
-# base ring + side barb
-RING_R = 14.0              # bottom plug that goes into the X base hub
-RING_H = 14.0
-BARB_Z = 4.5                # barb axis height
-BARB_LEN = 19.0
-RIDGE_OFFS = (10.0, 14.5)   # hose ridges, kept clear of the root collar
-ROOT_R = 6.0                # collar radius at the ring face
-ROOT_LEN = 8.0              # collar tapers to the barb shaft over this length
-CH_D = 3.0                  # air channel / barb bore
-
-# X base (one piece, body plugs into its hub)
+CAP_FIT = 0.25
+RING_R, RING_H = 14.0, 14.0
+BARB_Z, BARB_LEN, CH_D = 4.5, 19.0, 3.0
+RIDGE_OFFS = (10.0, 14.5)
+ROOT_R, ROOT_LEN = 6.0, 8.0
+SOCK_TOP_D, SOCK_BOT_D, SOCK_DEPTH = 12.5, 11.6, 9.0   # tapered socket in the floor
+GROOVE_W, GROOVE_DEPTH, GROOVE_ANG = 3.0, 1.0, 45.0
 SLOT_ANGLES = (0, 90, 180, 270)
-ARM_ANGLES = (45, 135, 225, 315)
-HUB_FIT = 0.25
-HUB_WALL = 4.0
-HUB_H = 14.0
-ARM_LEN = 80.0              # centre to pad centre
-ARM_W, ARM_H = 18.0, 6.0
-PAD_R = 13.0
-BARB_SLOT_W = 14.0          # opening in the hub for the barb collar
+SLOT_W, SLOT_H = 4.0, 28.0
+SLOT_Z0 = FLOOR_Z + 1.0
 
-R = BALL_D / 2
-c0 = math.sqrt(R * R - (SEAT_D / 2) ** 2)
-stack_top = SEAT_Z + c0 + R + (MAX_BALLS - 1) * BALL_D
-CEIL_Z = stack_top + LIFT
-TOP_Z = CEIL_Z + PLUG_LEN
+# ---------- cartridge ----------
+BALL_D = 12.0
+CART_OD = TUBE_D - 0.5
+CART_ID = BALL_D + 1.0
+CART_FLOOR = 3.0
+CART_GAP = 0.8              # underside hovers above the body floor; the taper does the sealing
+SPIG_TOP_D, SPIG_BOT_D, SPIG_LEN = 12.6, 11.8, 8.0
+FUNNEL_DEG = 15.0
+RIB_W, RIB_H = GROOVE_W - 0.5, GROOVE_DEPTH - 0.2
+CART_SLOT_W = 3.5
+CART_TOP_Z = TOP_Z - PLUG_LEN - 1.0     # stays below the cap plug
+SEATS = (8.0, 5.5)
+
+# ---------- X base ----------
+ARM_ANGLES = (45, 135, 225, 315)
+HUB_FIT, HUB_WALL, HUB_H = 0.25, 4.0, 14.0
+ARM_LEN, ARM_W, ARM_H = 90.0, 18.0, 6.0
+BARB_SLOT_W = 14.0
 
 def cyl(h, r1, r2=None, z=0.0):
     r2 = r1 if r2 is None else r2
@@ -64,66 +62,89 @@ def cyl(h, r1, r2=None, z=0.0):
 def box(x, y, z, x0=0.0, cy=0.0, z0=0.0):
     return m3d.Manifold.cube((x, y, z)).translate((x0, cy - y / 2, z0))
 
-def xcyl(length, r1, r2, x0, z):     # cylinder along +x
+def xcyl(length, r1, r2, x0, z):
     return m3d.Manifold.cylinder(length, r1, r2, SEG).rotate((0, 90, 0)).translate((x0, 0, z))
 
-funnel_h = (TUBE_D / 2 - SEAT_D / 2) * math.tan(math.radians(FUNNEL_DEG))
+def to_tm(man):
+    mesh = man.to_mesh()
+    return trimesh.Trimesh(vertices=mesh.vert_properties[:, :3], faces=mesh.tri_verts)
 
 # ---- body ----
 body = cyl(RING_H, RING_R) + cyl(TOP_Z, BODY_R)
-# side barb along +x, resting on the bed via a rib
 bx = RING_R - 1.0
 barb = xcyl(BARB_LEN, 2.3, 2.3, bx, BARB_Z)
 for off in RIDGE_OFFS:
-    barb = barb + xcyl(3.5, 2.75, 2.3, bx + off, BARB_Z)   # ridges: wide toward body
-# root reinforcement: tapered collar where the barb meets the plug (no support under the barb; add it in the slicer)
-barb = barb + xcyl(ROOT_LEN, ROOT_R, 2.3, bx - 1.0, BARB_Z)
-barb = barb ^ box(100, 100, 50, x0=-10, z0=0.0)              # trim anything below the bed
+    barb = barb + xcyl(3.5, 2.75, 2.3, bx + off, BARB_Z)
+barb = barb + xcyl(ROOT_LEN, ROOT_R, 2.3, bx - 1.0, BARB_Z)       # root collar
+barb = barb ^ box(100, 100, 50, x0=-10, z0=0.0)                  # nothing below the bed
 body = body + barb
-# air path: barb bore -> centre -> up to seat
-body = body - xcyl(bx + BARB_LEN + 1, CH_D / 2, CH_D / 2, 0.0, BARB_Z)
-body = body - cyl(SEAT_Z - BARB_Z + 0.1, BORE_D / 2, z=BARB_Z - CH_D / 2)
-cham_h = (SEAT_D - BORE_D) / 2
-body = body - cyl(cham_h + 0.001, BORE_D / 2, SEAT_D / 2, SEAT_Z - cham_h)
-# funnel + tube
-body = body - cyl(funnel_h + 0.001, SEAT_D / 2, TUBE_D / 2, SEAT_Z)
-body = body - cyl(TOP_Z - SEAT_Z, TUBE_D / 2, z=SEAT_Z + funnel_h)
-# vent slots by the bottom ball
+body = body - xcyl(bx + BARB_LEN + 1, CH_D / 2, CH_D / 2, 0.0, BARB_Z)          # side channel
+riser_z0 = BARB_Z - CH_D / 2
+body = body - cyl(FLOOR_Z - SOCK_DEPTH - riser_z0 + 0.2, 2.0, z=riser_z0)      # riser to socket
+body = body - cyl(SOCK_DEPTH + 0.01, SOCK_BOT_D / 2, SOCK_TOP_D / 2, FLOOR_Z - SOCK_DEPTH)  # tapered socket
+body = body - cyl(TOP_Z - FLOOR_Z + 1, TUBE_D / 2, z=FLOOR_Z)                  # tube
+groove = box(TUBE_D / 2 + GROOVE_DEPTH, GROOVE_W, TOP_Z - FLOOR_Z + 1, x0=0, z0=FLOOR_Z)
+body = body - groove.rotate((0, 0, GROOVE_ANG))
 for a in SLOT_ANGLES:
-    s = box(BODY_R + 2, 4.0, 20.0, x0=0, z0=SEAT_Z + 1.0)
-    body = body - s.rotate((0, 0, a))   # between the legs (z above the barb)
+    body = body - box(BODY_R + 2, SLOT_W, SLOT_H, x0=0, z0=SLOT_Z0).rotate((0, 0, a))
 
-# ---- cap (prints flat, plug up) ----
-plug_r = (TUBE_D - FIT) / 2
+# ---- cap ----
+plug_r = (TUBE_D - CAP_FIT) / 2
 cap = cyl(2.5, BODY_R) + cyl(PLUG_LEN, plug_r, z=2.5)
 cap = cap - cyl(PLUG_LEN + 1, plug_r - 1.6, z=2.5)
 cap = cap - cyl(10, 3.0, z=-1)
 
-# ---- X base (prints flat) ----
+# ---- cartridge (modelled in place) ----
+def cartridge(seat_d):
+    z0 = FLOOR_Z + CART_GAP
+    seat_z = z0 + CART_FLOOR
+    funnel_h = (CART_ID / 2 - seat_d / 2) * math.tan(math.radians(FUNNEL_DEG))
+    c = cyl(CART_TOP_Z - z0, CART_OD / 2, z=z0)
+    c = c + cyl(SPIG_LEN, SPIG_BOT_D / 2, SPIG_TOP_D / 2, z0 - SPIG_LEN)
+    rib = box(CART_OD / 2 + RIB_H, RIB_W, CART_TOP_Z - z0, x0=0, z0=z0)
+    c = c + rib.rotate((0, 0, GROOVE_ANG))
+    c = c - cyl(funnel_h + 0.001, seat_d / 2, CART_ID / 2, seat_z)
+    c = c - cyl(CART_TOP_Z - seat_z, CART_ID / 2, z=seat_z + funnel_h)
+    c = c - cyl(SPIG_LEN + CART_FLOOR + 0.2, seat_d / 2, z=z0 - SPIG_LEN - 0.1)
+    for a in SLOT_ANGLES:
+        c = c - box(CART_OD / 2 + 2, CART_SLOT_W, SLOT_H - 2, x0=0, z0=seat_z + 0.5).rotate((0, 0, a))
+    return c, seat_z
+
+# ---- X base (no end pads) ----
 hub_in = RING_R + HUB_FIT
 xb = cyl(HUB_H, hub_in + HUB_WALL)
 for a in ARM_ANGLES:
-    arm = box(ARM_LEN, ARM_W, ARM_H, x0=0.0)
-    arm = arm + m3d.Manifold.cylinder(ARM_H, PAD_R, PAD_R, SEG).translate((ARM_LEN, 0, 0))
-    xb = xb + arm.rotate((0, 0, a))
-xb = xb - cyl(HUB_H + 2, hub_in, z=-1)                              # through socket
-xb = xb - box(hub_in + HUB_WALL + 2, BARB_SLOT_W, HUB_H + 2, x0=0.0, z0=-1)  # barb slot at +x
+    xb = xb + box(ARM_LEN, ARM_W, ARM_H, x0=0.0).rotate((0, 0, a))
+xb = xb - cyl(HUB_H + 2, hub_in, z=-1)
+xb = xb - box(hub_in + HUB_WALL + 2, BARB_SLOT_W, HUB_H + 2, x0=0.0, z0=-1)
 
-def save(man, name):
-    mesh = man.to_mesh()
-    tm = trimesh.Trimesh(vertices=mesh.vert_properties[:, :3], faces=mesh.tri_verts)
-    tm.export(f"{OUT}/{name}")
-    return tm
-
-b = save(body, "relief_base.stl")
-c = save(cap, "relief_cap.stl")
-x = save(xb, "relief_xbase.stl")
-
-area = math.pi * (SEAT_D / 2) ** 2
+parts = {"relief_base.stl": to_tm(body), "relief_cap.stl": to_tm(cap), "relief_xbase.stl": to_tm(xb)}
 g1 = 7.85 * math.pi / 6 * (BALL_D / 10) ** 3
-print(f"body watertight={b.is_watertight} height {TOP_Z:.1f} tube ID {TUBE_D:.1f} OD {2*BODY_R:.1f} base ring {2*RING_R:.0f}")
-print(f"cap watertight={c.is_watertight} xbase watertight={x.is_watertight} xbase span {x.bounds[1][0]-x.bounds[0][0]:.0f} mm")
-print(f"foot reach radius {ARM_LEN + PAD_R:.0f} mm, funnel rise {funnel_h:.2f} mm")
-print(f"edge seated: R*sin(funnel)={R*math.sin(math.radians(FUNNEL_DEG)):.2f} < {SEAT_D/2}")
-for n in range(1, MAX_BALLS + 1):
-    print(f"  {n} ball(s): {n*g1:.1f} g -> {n*g1*9.81/area:.1f} kPa")
+info = []
+for sd in SEATS:
+    cm, seat_z = cartridge(sd)
+    tm = to_tm(cm)
+    tm.apply_translation((0, 0, -tm.bounds[0][2]))        # print upright, spigot on the bed
+    name = f"relief_cart_{str(sd).replace('.', 'p')}mm.stl"
+    parts[name] = tm
+    area = math.pi * (sd / 2) ** 2
+    c0 = seat_z + math.sqrt((BALL_D / 2) ** 2 - (sd / 2) ** 2)
+    nmax = int((CART_TOP_Z - 3.0 - (c0 + BALL_D / 2)) // BALL_D) + 1
+    seated = BALL_D / 2 * math.sin(math.radians(FUNNEL_DEG)) < sd / 2
+    info.append((name, tm, seated, nmax, area))
+
+for name, tm in parts.items():
+    tm.export(f"{OUT}/{name}")
+    print(f"{name}: watertight={tm.is_watertight} size={[round(v,1) for v in (tm.bounds[1]-tm.bounds[0])]}")
+for name, tm, seated, nmax, area in info:
+    print(f"{name}: edge_seated={seated} max balls {nmax}: " + "  ".join(f"{n}:{n*g1*9.81/area:.1f}" for n in range(1, nmax + 1)) + " kPa")
+print(f"ball {g1:.2f} g, cartridge wall {(CART_OD-CART_ID)/2:.2f} mm")
+
+# ---- one print plate ----
+plate = [parts["relief_xbase.stl"]]
+for name, pos in (("relief_base.stl", (52, 0)), ("relief_cap.stl", (-52, 0)),
+                  ("relief_cart_8p0mm.stl", (0, 52)), ("relief_cart_5p5mm.stl", (0, -52))):
+    t = parts[name].copy(); t.apply_translation((pos[0], pos[1], 0)); plate.append(t)
+P = trimesh.util.concatenate(plate)
+P.export(f"{OUT}/relief_plate.stl")
+print("plate size", [round(v, 1) for v in (P.bounds[1] - P.bounds[0])])
