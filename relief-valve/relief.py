@@ -22,8 +22,8 @@ MAX_BALLS = 5
 TUBE_D = BALL_D + 1.2       # FDM: holes shrink ~0.2-0.4 mm, still free-running
 WALL = 2.4
 BODY_R = TUBE_D / 2 + WALL
-SEAT_D = 6.5                # sharp edge; drill with a 6.5 mm bit after printing
-BORE_D = 6.0
+SEAT_D = 5.5                # printed as-is (no drilling); smaller seat -> higher pressure per ball
+BORE_D = 5.5                # straight bore, sharp edge at the funnel
 FUNNEL_DEG = 15.0           # R*sin(15) = 1.9 < 3.25 -> ball sits on the edge, not the funnel
 SEAT_Z = 14.0
 LIFT = 5.0
