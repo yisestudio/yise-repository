@@ -1,9 +1,10 @@
-"""Universal dead-weight ball relief valve for 4mm-ID silicone airline.
+"""Stacked-ball dead-weight relief valve with plug-in legs.
 
-Swap the steel ball (10-25 mm) to change the opening pressure.
-The ball always seats on the same sharp 5.0 mm edge, so the effective
-area is fixed and pressure scales with ball weight. A shallow 8-degree
-funnel floor rolls a bounced ball back onto the seat.
+1, 2 or 3 steel balls (16 mm) stack in a close-fit tube on a 5.9 mm
+sharp seat edge. More balls = more weight = higher opening pressure:
+1 ball ~6 kPa, 2 balls ~12 kPa, 3 balls ~18 kPa.
+Three removable legs plug into sockets so the valve stands on the floor
+with room under it for the hose.
 
 Usage: python3 relief.py <out_dir>   (units: mm, z up)
 """
@@ -14,47 +15,76 @@ import trimesh
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 SEG = 128
 
-BALL_MAX = 25.0
-SEAT_D = 5.0            # sharp seat edge -> effective area
-BORE_D = 4.4            # hole below the 45-degree chamfer
+BALL_D = 16.0
+MAX_BALLS = 3
+TUBE_D = BALL_D + 0.6       # close fit keeps the stack straight
+WALL = 2.4
+BODY_R = TUBE_D / 2 + WALL
+SEAT_D = 5.9                # sharp seat edge -> effective area
+BORE_D = 5.3                # hole below the 45-degree chamfer
 BARB_BORE_D = 3.0
-CHAMBER_D = BALL_MAX + 1.8
-WALL = 2.6
-BODY_R = CHAMBER_D / 2 + WALL
 BARB_TOP = 13.0
-SEAT_Z = 18.0           # seat plane
-FUNNEL_DEG = 8.0        # must satisfy R*sin(slope) < seat radius for the largest ball
-CEIL_ABOVE_SEAT = 30.0  # largest ball top at rest ~24.75 -> ~5 mm lift
+SEAT_Z = 18.0
+LIFT = 5.0
 PLUG_LEN = 3.0
-TOP_Z = SEAT_Z + CEIL_ABOVE_SEAT + PLUG_LEN
 FIT = 0.10
+
+R = BALL_D / 2
+c0 = math.sqrt(R * R - (SEAT_D / 2) ** 2)              # bottom ball centre above seat
+stack_top = SEAT_Z + c0 + R + (MAX_BALLS - 1) * BALL_D
+CEIL_Z = stack_top + LIFT
+TOP_Z = CEIL_Z + PLUG_LEN
+
+# legs
+LEG_ANGLES = (90, 210, 330)
+SLOT_ANGLES = (30, 150, 270)
+SOCKET_R = 18.0             # socket centre radius
+PIN = 5.0                   # leg pin cross-section
+SOCKET = PIN + 0.3          # clearance for SLA
+SOCKET_DEPTH = 8.0
+BOSS_H = 11.0
+BOSS_W = 10.0
+LEG_W = 7.0                 # leg body is thicker than the pin -> shoulder stops it
+LEG_BELOW = 45.0            # leg length under the body (barb is 13 mm, leaves ~32 mm for the hose bend)
+FOOT = (20.0, 12.0, 4.0)    # foot pad, extends outward
 
 def cyl(h, r1, r2=None, z=0.0):
     r2 = r1 if r2 is None else r2
     return m3d.Manifold.cylinder(h, r1, r2, SEG).translate((0, 0, z))
 
-funnel_h = (CHAMBER_D / 2 - SEAT_D / 2) * math.tan(math.radians(FUNNEL_DEG))
+def box(x, y, z, cx=0.0, cy=0.0, z0=0.0):
+    return m3d.Manifold.cube((x, y, z)).translate((cx - x / 2, cy - y / 2, z0))
 
-# ---- base ----
-base = cyl(BARB_TOP, 2.3)                                   # barb shaft OD 4.6
+# ---- body ----
+base = cyl(BARB_TOP, 2.3)
 for z in (2.0, 6.5):
-    base = base + cyl(3.5, 2.3, 2.75, z)                    # barb ridges OD 5.5
-base = base + cyl(TOP_Z - BARB_TOP, BODY_R, z=BARB_TOP)     # body
-base = base - cyl(TOP_Z - SEAT_Z, CHAMBER_D / 2, z=SEAT_Z + funnel_h)       # chamber
-base = base - cyl(funnel_h + 0.001, SEAT_D / 2, CHAMBER_D / 2, SEAT_Z)     # 8-degree funnel floor
-base = base - cyl(BARB_TOP + 1, BARB_BORE_D / 2, z=-0.5)    # barb bore
-base = base - cyl(SEAT_Z - BARB_TOP + 0.2, BORE_D / 2, z=BARB_TOP - 0.1)   # seat bore
+    base = base + cyl(3.5, 2.3, 2.75, z)
+base = base + cyl(TOP_Z - BARB_TOP, BODY_R, z=BARB_TOP)
+for a in LEG_ANGLES:                                       # leg bosses
+    boss = box(SOCKET_R + BOSS_W / 2, BOSS_W, BOSS_H, cx=(SOCKET_R + BOSS_W / 2) / 2, z0=BARB_TOP)
+    base = base + boss.rotate((0, 0, a))
+base = base - cyl(TOP_Z - SEAT_Z + 1, TUBE_D / 2, z=SEAT_Z)            # ball tube
+base = base - cyl(BARB_TOP + 1, BARB_BORE_D / 2, z=-0.5)               # barb bore
+base = base - cyl(SEAT_Z - BARB_TOP + 0.2, BORE_D / 2, z=BARB_TOP - 0.1)
 cham_h = (SEAT_D - BORE_D) / 2
-base = base - cyl(cham_h + 0.001, BORE_D / 2, SEAT_D / 2, SEAT_Z - cham_h)  # 45-degree chamfer -> sharp 5.0 edge
-for a in range(4):                                          # vent slots
-    slot = m3d.Manifold.cube((BODY_R + 2, 4.0, 22.0)).translate((0, -2.0, SEAT_Z + 4.0))
-    base = base - slot.rotate((0, 0, a * 90 + 45))
+base = base - cyl(cham_h + 0.001, BORE_D / 2, SEAT_D / 2, SEAT_Z - cham_h)  # sharp 5.9 edge
+for a in SLOT_ANGLES:                                      # vent slots at the bottom ball
+    slot = box(BODY_R + 2, 4.0, 20.0, cx=(BODY_R + 2) / 2, z0=SEAT_Z + 0.5)
+    base = base - slot.rotate((0, 0, a))
+for a in LEG_ANGLES:                                       # leg sockets (open downward)
+    sock = box(SOCKET, SOCKET, SOCKET_DEPTH + 0.5, cx=SOCKET_R, z0=BARB_TOP - 0.5)
+    base = base - sock.rotate((0, 0, a))
 
 # ---- cap ----
-plug_r = (CHAMBER_D - FIT) / 2
+plug_r = (TUBE_D - FIT) / 2
 cap = cyl(2.5, BODY_R) + cyl(PLUG_LEN, plug_r, z=2.5)
-cap = cap - cyl(PLUG_LEN + 1, plug_r - 1.6, z=2.5)
-cap = cap - cyl(10, 3.0, z=-1)
+cap = cap - cyl(PLUG_LEN + 1, plug_r - 1.5, z=2.5)
+cap = cap - cyl(10, 2.5, z=-1)
+
+# ---- leg (print 3) ----  pin up, foot pad points +x (outward)
+leg = box(PIN, PIN, SOCKET_DEPTH, z0=LEG_BELOW)                       # pin into socket
+leg = leg + box(LEG_W, LEG_W, LEG_BELOW)                               # leg body
+leg = leg + box(FOOT[0], FOOT[1], FOOT[2], cx=FOOT[0] / 2 - LEG_W / 2)  # foot pad
 
 def save(man, name):
     mesh = man.to_mesh()
@@ -64,16 +94,15 @@ def save(man, name):
 
 b = save(base, "relief_base.stl")
 c = save(cap, "relief_cap.stl")
+l = save(leg, "relief_leg.stl")
 
 area = math.pi * (SEAT_D / 2) ** 2
-ceiling = SEAT_Z + funnel_h * 0 + CEIL_ABOVE_SEAT
-print(f"base watertight={b.is_watertight} size={2*BODY_R:.1f} x {TOP_Z:.1f} mm, chamber ID {CHAMBER_D:.1f}")
-print(f"cap watertight={c.is_watertight}, funnel rise {funnel_h:.2f} mm")
-print("ball_mm  g(carbon)  kPa   edge_seated  lift_mm")
-for d in (10, 12, 14, 16, 18, 20, 22, 24, 25):
-    R = d / 2
-    g = 7.85 * math.pi / 6 * (d / 10) ** 3
-    kpa = g * 9.81 / area
-    seated = R * math.sin(math.radians(FUNNEL_DEG)) < SEAT_D / 2
-    top = SEAT_Z + math.sqrt(R * R - (SEAT_D / 2) ** 2) + R
-    print(f"{d:>6}  {g:8.1f}  {kpa:5.1f}  {seated!s:>11}  {ceiling - top:6.1f}")
+g1 = 7.85 * math.pi / 6 * (BALL_D / 10) ** 3
+print(f"body watertight={b.is_watertight}  OD {2*BODY_R:.1f}  height {TOP_Z:.1f}  tube ID {TUBE_D:.1f}")
+print(f"cap watertight={c.is_watertight}  leg watertight={l.is_watertight}")
+print(f"standing height ~{TOP_Z + LEG_BELOW + 0 - BARB_TOP + BARB_TOP:.0f} mm above floor (legs {LEG_BELOW} below body bottom)")
+print(f"foot reach radius ~{SOCKET_R + FOOT[0] - LEG_W/2:.0f} mm")
+print(f"seat area {area:.2f} mm2, one ball {g1:.1f} g")
+for n in range(1, MAX_BALLS + 1):
+    print(f"  {n} ball(s): {n*g1:.1f} g -> {n*g1*9.81/area:.1f} kPa")
+print(f"lift with {MAX_BALLS} balls: {CEIL_Z - stack_top:.1f} mm")
